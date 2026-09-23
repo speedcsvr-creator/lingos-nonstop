@@ -2,9 +2,8 @@ name: Lingos Non-Stop Turbo Bot
 
 on:
   schedule:
-    # Uruchamia bota automatycznie co 5 godzin
     - cron: '0 */5 * * *'
-  workflow_dispatch: # Pozwala uruchomić bota w dowolnym momencie ręcznie
+  workflow_dispatch:
 
 jobs:
   run-lingos-turbo:
@@ -22,12 +21,14 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Instalacja Google Chrome
+      - name: Instalacja Google Chrome i czyszczenie ChromeDrivera
         run: |
           sudo apt-get update
           sudo apt-get install -y wget
           wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo dpkg -i google-chrome-stable_current_amd64.deb || sudo apt-get install -f -y
+          # Usunięcie starego chromedrivera z systemu, aby Selenium pobrało właściwy
+          sudo rm -f /usr/bin/chromedriver
 
       - name: Instalacja bibliotek Python
         run: |

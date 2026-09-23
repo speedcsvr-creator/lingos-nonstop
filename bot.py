@@ -4,16 +4,12 @@ import re
 import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 
 LOGIN_URL = "https://lingos.pl/h/login"
 
 class LingosContinuousBot:
     def __init__(self):
-        # Baza synonimów i słówek przechowywana w pamięci RAM
-        self.dictionary = {
-            "zwiedzać": "go sightseeing"
-        }
+        self.dictionary = {"zwiedzać": "go sightseeing"}
         self.synonyms = {
             "seldom": "rarely", "rarely": "seldom", "hang out": "spend time",
             "gran": "granny", "granny": "gran", "Computer Studies": "IT or ICT",
@@ -23,7 +19,6 @@ class LingosContinuousBot:
             "hang out with": "spend time with"
         }
 
-        # Konfiguracja Ultra-Fast Headless Chrome
         options = webdriver.ChromeOptions()
         options.add_argument('--headless=new')
         options.add_argument('--no-sandbox')
@@ -39,23 +34,41 @@ class LingosContinuousBot:
         login_val = os.getenv("LINGOS_LOGIN")
         pass_val = os.getenv("LINGOS_PASSWORD")
         
-        print("[+] Logowanie do Lingos...")
+        print("[+] Logowanie do Lingos (JS Direct Injection)...")
         self.driver.get(LOGIN_URL)
-        time.sleep(2)
+        time.sleep(3)
 
         if login_val and pass_val:
             try:
-                inputs = self.driver.find_elements(By.TAG_NAME, "input")
-                for inp in inputs:
-                    input_type = inp.get_attribute("type")
-                    input_name = inp.get_attribute("name") or ""
-                    if input_type == "text" or "login" in input_name or "email" in input_name:
-                        inp.send_keys(login_val)
-                    elif input_type == "password":
-                        inp.send_keys(pass_val)
-                
-                inputs[-1].send_keys(Keys.RETURN)
-                time.sleep(3)
+                # Wstrzyknięcie loginu i hasła bezpośrednio w DOM (omija błędy Selenium)
+                js_login = f"""
+                let inputs = document.querySelectorAll('input');
+                let loginSet = false;
+                let passSet = false;
+                for (let inp of inputs) {{
+                    let type = inp.type.toLowerCase();
+                    let name = (inp.name || '').toLowerCase();
+                    if (!loginSet && (type === 'text' || type === 'email' || name.includes('login') || name.includes('email'))) {{
+                        let nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                        nativeSetter.call(inp, {json.dumps(login_val)});
+                        inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        loginSet = true;
+                    }} else if (!passSet && type === 'password') {{
+                        let nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                        nativeSetter.call(inp, {json.dumps(pass_val)});
+                        inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        passSet = true;
+                    }}
+                }}
+                let form = document.querySelector('form');
+                if (form) {{
+                    form.requestSubmit ? form.requestSubmit() : form.submit();
+                }}
+                """
+                self.driver.execute_script(js_login)
+                time.sleep(4)
                 print("[+] Zalogowano pomyślnie! Rozpoczynam pętlę TURBO...")
             except Exception as e:
                 print(f"[!] Błąd logowania: {e}")
@@ -167,7 +180,6 @@ class LingosContinuousBot:
                     time.sleep(0.03)
                     continue
 
-                # Pusta odpowiedź -> pobranie i zapamiętanie w RAM
                 self.fast_inject_answer_and_submit("")
                 self.extract_and_learn_in_ram(question)
                 self.fast_confirm_next()
@@ -175,10 +187,9 @@ class LingosContinuousBot:
             except Exception:
                 time.sleep(0.05)
 
-        print("[+] Koniec cyklu. Przekazywanie do kolejnej sesji...")
+        print("[+] Koniec cyklu.")
         self.driver.quit()
 
 if __name__ == "__main__":
     bot = LingosContinuousBot()
-    # Działa bez przerwy przez 5 godzin w jednym cyklu
     bot.run(duration_hours=5)

@@ -68,11 +68,11 @@ class LingosContinuousBot:
                 """
                 self.driver.execute_script(js_login)
                 time.sleep(4)
-                print(f"[+] Zalogowano. Pozycja startowa: {self.driver.current_url}")
+                print(f"[+] Zalogowano pomyślnie!")
             except Exception as e:
                 print(f"[!] Błąd logowania: {e}")
 
-    def fast_inject_answer_and_submit(self, answer_text=""):
+    def fast_inject_answer_and_submit(self, answer_text="a"):
         js = f"""
         let input = document.getElementById('learning-answer') || document.getElementById('flashcard_answer_input') || document.querySelector("input[type='text']");
         if (input) {{
@@ -80,11 +80,13 @@ class LingosContinuousBot:
             nativeSetter.call(input, {json.dumps(answer_text)});
             input.dispatchEvent(new Event('input', {{ bubbles: true }}));
             input.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            let form = input.closest('form');
-            if (form) {{
-                form.requestSubmit ? form.requestSubmit() : form.submit();
+            
+            let btn = document.querySelector("button[type='submit']") || input.closest('form')?.querySelector("button");
+            if (btn) {{
+                btn.click();
             }} else {{
-                input.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Enter', keyCode: 13, bubbles: true }}));
+                let form = input.closest('form');
+                if (form) form.requestSubmit ? form.requestSubmit() : form.submit();
             }}
         }}
         """
@@ -95,10 +97,10 @@ class LingosContinuousBot:
 
     def fast_confirm_next(self):
         js = """
-        let btns = document.querySelectorAll("button, a.btn");
+        let btns = document.querySelectorAll("button, a.btn, input[type='submit']");
         for (let btn of btns) {
             let txt = btn.innerText ? btn.innerText.toLowerCase() : '';
-            if (txt.includes("dalej") || txt.includes("przejdź") || txt.includes("kontynuuj") || txt.includes("sprawdź")) {
+            if (txt.includes("dalej") || txt.includes("przejdź") || txt.includes("kontynuuj") || txt.includes("sprawdź") || txt.includes("ok")) {
                 btn.click();
                 return;
             }
@@ -111,28 +113,29 @@ class LingosContinuousBot:
 
     def extract_and_learn_in_ram(self, question):
         js_extract = """
-        let targets = document.querySelectorAll('strong, .text-foreground strong, #flashcard_correct_answer, .correct-answer');
+        let targets = document.querySelectorAll('strong, .text-foreground strong, #flashcard_correct_answer, .correct-answer, span.font-bold');
         for (let t of targets) {
             let txt = t.innerText ? t.innerText.trim() : '';
-            if (txt.length > 0 && !txt.toLowerCase().includes('prawidłowa')) return txt;
+            if (txt.length > 0 && !txt.toLowerCase().includes('prawidłowa') && txt.toLowerCase() !== 'a') return txt;
         }
         let alert = document.querySelector('.text-foreground, #flashcard_correct_answer');
         if (alert && alert.innerText) return alert.innerText.trim();
         return null;
         """
         start_time = time.time()
-        while time.time() - start_time < 0.8:
+        while time.time() - start_time < 1.2:
             try:
                 res = self.driver.execute_script(js_extract)
                 if res:
                     cleaned = re.sub(r'^(Prawidłowa odpowiedź:|Odpowiedź:)\s*', '', res, flags=re.IGNORECASE).strip()
-                    if cleaned and cleaned.lower() != question.lower():
+                    if cleaned and cleaned.lower() != question.lower() and cleaned.lower() != 'a':
                         self.dictionary[question] = cleaned
                         print(f"[RAM BAZA] Zapamiętano: '{question}' -> '{cleaned}'")
-                        break
+                        return True
             except Exception:
                 pass
-            time.sleep(0.02)
+            time.sleep(0.05)
+        return False
 
     def process_navigation(self):
         js = """
@@ -184,10 +187,10 @@ class LingosContinuousBot:
                     time.sleep(0.2)
                     
                     nav_retry += 1
-                    if nav_retry % 15 == 0:
+                    if nav_retry % 20 == 0:
                         curr_url = self.driver.current_url
                         if curr_url != self.last_url_log:
-                            print(f"[+] Bot szuka lekcji na stronie: {curr_url}")
+                            print(f"[+] Bot nawiguje na stronie: {curr_url}")
                             self.last_url_log = curr_url
                     continue
 
@@ -204,14 +207,18 @@ class LingosContinuousBot:
                 if answer:
                     print(f"[+] Odpowiedź na '{question}' -> '{answer}'")
                     self.fast_inject_answer_and_submit(answer)
+                    time.sleep(0.3)
                     self.fast_confirm_next()
-                    time.sleep(0.05)
+                    time.sleep(0.2)
                     continue
 
-                print(f"[?] Nieznane słówko '{question}' -> Pobieram odpowiedź...")
-                self.fast_inject_answer_and_submit("")
+                print(f"[?] Nieznane słówko '{question}' -> Testuję odpowiedź...")
+                self.fast_inject_answer_and_submit("a")  # Wpisanie 'a' wymusza sprawdzenie
+                time.sleep(0.4)
+                
                 self.extract_and_learn_in_ram(question)
                 self.fast_confirm_next()
+                time.sleep(0.3)
 
             except Exception as e:
                 time.sleep(0.1)

@@ -36,6 +36,7 @@ jobs:
 
       - name: Uruchomienie Bota TURBO (5 Godzin)
         env:
+          PYTHONUNBUFFERED: "1"
           LINGOS_LOGIN: ${{ secrets.LINGOS_LOGIN }}
           LINGOS_PASSWORD: ${{ secrets.LINGOS_PASSWORD }}
         run: python bot.py
